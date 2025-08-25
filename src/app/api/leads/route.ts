@@ -8,17 +8,15 @@ export async function GET(request: NextRequest) {
     const limit = Number.parseInt(searchParams.get("limit") || "10")
     const status = searchParams.get("status")
     const minScore = searchParams.get("minScore")
-    const campaignId = searchParams.get("campaignId")
 
     // TODO: Backend team - Implement database query
     // Example query parameters:
     // - page: pagination page number
     // - limit: number of results per page
-    // - status: 'new', 'contacted', 'email_sent', 'replied', 'qualified', 'converted'
+    // - status: 'new', 'contacted', 'qualified', 'converted'
     // - minScore: minimum lead score filter
-    // - campaignId: filter by campaign
 
-    console.log("[v0] Leads query:", { page, limit, status, minScore, campaignId })
+    console.log("[v0] Leads query:", { page, limit, status, minScore })
 
     // Mock response structure
     const mockLeads = {
@@ -30,15 +28,10 @@ export async function GET(request: NextRequest) {
           company: "Tech Corp",
           title: "VP Marketing",
           score: 92,
-          status: "email_sent",
+          status: "new",
           profile: "Experienced marketing professional...",
           createdAt: "2024-01-15T10:00:00Z",
           updatedAt: "2024-01-15T10:00:00Z",
-          campaignId: "campaign_1",
-          emailsSent: 1,
-          emailsOpened: 0,
-          emailsClicked: 0,
-          emailsReplied: 0,
         },
       ],
       pagination: {
@@ -60,7 +53,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { name, email, company, title, profile, score, status = "new", campaignId, emailContent } = body
+    const { name, email, company, title, profile, score, status = "new" } = body
 
     // Validate required fields
     if (!name || !email) {
@@ -78,14 +71,8 @@ export async function POST(request: NextRequest) {
     //   profile TEXT,
     //   score INTEGER DEFAULT 0,
     //   status VARCHAR(50) DEFAULT 'new',
-    //   campaign_id VARCHAR(255),
-    //   email_content JSONB,
     //   created_at TIMESTAMP DEFAULT NOW(),
-    //   updated_at TIMESTAMP DEFAULT NOW(),
-    //   emails_sent INTEGER DEFAULT 0,
-    //   emails_opened INTEGER DEFAULT 0,
-    //   emails_clicked INTEGER DEFAULT 0,
-    //   emails_replied INTEGER DEFAULT 0
+    //   updated_at TIMESTAMP DEFAULT NOW()
     // );
 
     console.log("[v0] Lead creation/update:", {
@@ -94,7 +81,6 @@ export async function POST(request: NextRequest) {
       company,
       score,
       status,
-      campaignId,
     })
 
     const leadId = `lead_${Date.now()}`
@@ -112,8 +98,6 @@ export async function POST(request: NextRequest) {
         profile,
         score,
         status,
-        campaignId,
-        emailContent,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
