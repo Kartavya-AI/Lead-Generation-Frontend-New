@@ -2,9 +2,8 @@
 
 import type React from "react";
 
-import { useState } from "react";
+import { useState,useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import logo from '../../../public/7242a710-3055-4f90-acd8-738e65364450 (1).png'
 import {
     Card,
     CardContent,
@@ -19,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Menu, X } from "lucide-react";
+import { SignInButton } from '@clerk/nextjs'
 
 import {
     Upload,
@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
-
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 interface ApiResponse {
     emails: Array<{
         body: string;
@@ -71,12 +71,13 @@ interface EnhancedLead {
 }
 
 interface LeadAgentParams {
-    topic: string;
     niche: string;
-    designation: string;
     service: string;
-    no_of: number;
-    geospatial_area: string;
+    location: string;
+    designation: string;
+    no_of: string;
+    size: string;
+    date_range: string;
 }
 
 interface LeadAgentResponse {
@@ -116,8 +117,10 @@ const Logo = () => (
         className="flex items-center font-bold"
     >
         <Image
-            src={logo}
+            src='/kartavya-logo.png'
             alt="Kartavya Logo"
+            width={56}
+            height={56}
             className={`h-14 w-14 animate-spin-slow`}
         />
         <span className="text-3xl text-zinc-500">Kartavya</span>
@@ -138,18 +141,21 @@ export default function LeadDiscoveryPage() {
     const [enhancedLeads, setEnhancedLeads] = useState<EnhancedLead[]>([]);
 
     const [leadAgentParams, setLeadAgentParams] = useState<LeadAgentParams>({
-        topic: "Technology",
-        niche: "AI and Machine Learning",
-        designation: "CTO",
-        service: "Software Development",
-        no_of: 10,
-        geospatial_area: "San Francisco Bay Area",
-    });
+    niche: "healthcare",
+    service: "Telemedicine Platforms",
+    location: "Mumbai",
+    designation: "cto",
+    no_of: "1",
+    size: "mid",
+    date_range: "30 days",
+});
+
     const [leadAgentResults, setLeadAgentResults] =
         useState<LeadAgentResponse | null>(null);
     const [isProcessingLeadAgent, setIsProcessingLeadAgent] = useState(false);
     const [leadAgentLeads, setLeadAgentLeads] = useState<EnhancedLead[]>([]);
 
+  // ✅ Automatically add new AI leads to allLeads
     const [emailCredentials, setEmailCredentials] = useState<EmailCredentials>({
         sender_email: "",
         sender_password: "",
@@ -162,69 +168,74 @@ export default function LeadDiscoveryPage() {
     const [sendingEmails, setSendingEmails] = useState<Set<string>>(new Set());
 
     const calculateLeadScore = (profile: string, email: string): number => {
-        let score = 60; // Base score
+    let score = 60; // Base score
 
-        // Email domain scoring
-        const domain = email.split("@")[1]?.toLowerCase();
-        if (
-            domain?.includes("gmail") ||
-            domain?.includes("yahoo") ||
-            domain?.includes("hotmail")
-        ) {
-            score -= 10; // Personal email domains
-        } else {
-            score += 15; // Business email domains
-        }
+    // Defensive fallback for email
+    if (typeof email !== "string" || !email.includes("@")) {
+        email = ""; // or you can skip email scoring here
+    }
 
-        // Profile content scoring
-        const profileLower = profile.toLowerCase();
-        const seniorityKeywords = [
-            "ceo",
-            "cto",
-            "vp",
-            "director",
-            "head",
-            "chief",
-            "senior",
-            "lead",
-            "manager",
-        ];
-        const techKeywords = [
-            "ai",
-            "ml",
-            "software",
-            "tech",
-            "data",
-            "engineering",
-            "development",
-        ];
-        const industryKeywords = [
-            "saas",
-            "startup",
-            "enterprise",
-            "b2b",
-            "platform",
-            "solution",
-        ];
+    // Email domain scoring
+    const domain = email.split("@")[1]?.toLowerCase();
+    if (
+        domain?.includes("gmail") ||
+        domain?.includes("yahoo") ||
+        domain?.includes("hotmail")
+    ) {
+        score -= 10; // Personal email domains
+    } else if (domain) {
+        score += 15; // Business email domains
+    }
 
-        seniorityKeywords.forEach((keyword) => {
-            if (profileLower.includes(keyword)) score += 8;
-        });
+    // Profile content scoring
+    const profileLower = profile.toLowerCase();
+    const seniorityKeywords = [
+        "ceo",
+        "cto",
+        "vp",
+        "director",
+        "head",
+        "chief",
+        "senior",
+        "lead",
+        "manager",
+    ];
+    const techKeywords = [
+        "ai",
+        "ml",
+        "software",
+        "tech",
+        "data",
+        "engineering",
+        "development",
+    ];
+    const industryKeywords = [
+        "saas",
+        "startup",
+        "enterprise",
+        "b2b",
+        "platform",
+        "solution",
+    ];
 
-        techKeywords.forEach((keyword) => {
-            if (profileLower.includes(keyword)) score += 5;
-        });
+    seniorityKeywords.forEach((keyword) => {
+        if (profileLower.includes(keyword)) score += 8;
+    });
 
-        industryKeywords.forEach((keyword) => {
-            if (profileLower.includes(keyword)) score += 3;
-        });
+    techKeywords.forEach((keyword) => {
+        if (profileLower.includes(keyword)) score += 5;
+    });
 
-        // Profile length and quality
-        if (profile.length > 100) score += 5;
-        if (profile.length > 200) score += 5;
+    industryKeywords.forEach((keyword) => {
+        if (profileLower.includes(keyword)) score += 3;
+    });
 
-        return Math.min(Math.max(score, 0), 100);
-    };
+    // Profile length and quality
+    if (profile.length > 100) score += 5;
+    if (profile.length > 200) score += 5;
+
+    return Math.min(Math.max(score, 0), 100);
+};
 
     const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFile = event.target.files?.[0];
@@ -253,7 +264,7 @@ export default function LeadDiscoveryPage() {
 
         try {
             const response = await fetch(
-                "https://lead-gen-2-977121587860.asia-south1.run.app/process_csv",
+                `${API_BASE_URL}/`,
                 {
                     method: "POST",
                     body: formData,
@@ -276,7 +287,7 @@ export default function LeadDiscoveryPage() {
                 return {
                     name: email.name,
                     email: email.email,
-                    company: email.name.split(" ").slice(-1)[0] + " Corp", // Simple company extraction
+                    company: email.name.split(" ").slice(-1)[0] + " Corp", 
                     title: "Decision Maker",
                     profile,
                     score,
@@ -287,84 +298,86 @@ export default function LeadDiscoveryPage() {
                     source: "CSV" as const,
                 };
             });
-
             setEnhancedLeads(leads);
-        } catch (err) {
-            console.error("Error processing CSV:", err);
-            setError("Failed to process CSV file");
-        } finally {
-            setIsProcessing(false);
-        }
-    };
-
-    const handleLeadAgentSubmit = async () => {
-        setIsProcessingLeadAgent(true);
-        setError(null);
-        setLeadAgentResults(null);
-
-        try {
-            const response = await fetch(
-                "https://lead-agent-977121587860.asia-south1.run.app/lead-agent",
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify(leadAgentParams),
-                }
-            );
-
-            if (!response.ok) {
-                throw new Error("Failed to generate leads");
+            } catch (err) {
+                console.error("Error processing CSV:", err);
+                setError("Failed to process CSV file");
+            } finally {
+                setIsProcessing(false);
             }
+        };
 
-            const result: LeadAgentResponse = await response.json();
-            setLeadAgentResults(result);
+        const handleLeadAgentSubmit = async () => {
+    setIsProcessingLeadAgent(true);
+    setError(null);
+    setLeadAgentResults(null);
 
-            // Transform API results into enhanced leads
-            const leads: EnhancedLead[] = result.emails.map((email) => {
-                const contact = result.contacts.find(
-                    (c) => c.email === email.email
-                );
-                const company = result.companies.find(
-                    (c) => c.name === contact?.company
-                );
-                const score = calculateLeadScore(
-                    company?.description || "",
-                    email.email
-                );
+    try {
+        console.log("Sending leadAgentParams:", leadAgentParams);
 
-                return {
-                    name: email.name,
-                    email: email.email,
-                    company: contact?.company || "Unknown Company",
-                    title: contact?.title || "Unknown Title",
-                    profile: company?.description || "No profile available",
-                    score,
-                    emailContent: {
-                        subject: email.subject,
-                        body: email.body,
-                    },
-                    source: "AI Agent" as const,
-                    linkedin: contact?.linkedin_url,
-                    website: company?.website,
-                };
-            });
-
-            setLeadAgentLeads(leads);
-        } catch (err) {
-            console.error("Error generating leads:", err);
-            setError("Failed to generate leads");
-        } finally {
-            setIsProcessingLeadAgent(false);
+        const response = await fetch(
+        `${API_BASE_URL}/generate_leads`, 
+        {
+            method: "POST",
+            headers: {
+            "Content-Type": "application/json",
+            },
+            body: JSON.stringify(leadAgentParams),
         }
+        );
+        const extractCompanyFromProfile = (text: string): string | null => {
+        const match = text.match(/(?:at|from|by)\s+([A-Z][a-zA-Z0-9&\-. ]{2,})/);
+        return match ? match[1].trim() : null;
+        };
+
+        const result = await response.json();
+        console.log("Lead agent API response:", result);
+
+        if (!response.ok) {
+        const errorMsg = result?.error || result?.detail || "Failed to generate leads";
+        if (typeof errorMsg === "string" && errorMsg.includes("RESOURCE_EXHAUSTED")) {
+            throw new Error("The AI service is currently overloaded. Please try again later.");
+        }
+        throw new Error(errorMsg);
+        }
+
+        const posts = result.tasks_output?.[0];
+
+        if (!Array.isArray(posts)) {
+        throw new Error("Expected posts array in tasks_output[0]");
+        }
+
+        const leads: EnhancedLead[] = posts.map((post: any) => ({
+        name: post.poster_name || "Unnamed Contact",
+        email: undefined,
+        company: extractCompanyFromProfile(post.post_excerpt || "") || "Unknown Company",
+        title: post.poster_title || "Unknown Title",
+        profile: post.why_this_is_a_lead || post.post_excerpt || "No profile available",
+        score: calculateLeadScore(post.why_this_is_a_lead || "", post.poster_name),
+        emailContent: {
+            subject: "No subject",
+            body: "No email body",
+        },
+        source: "AI Agent" as const,
+        linkedin: post.linkedin_post_url || undefined,
+        website: undefined,
+        }));
+
+        console.log(" Final AI leads being set:", leads);
+        setLeadAgentLeads(leads);
+    } catch (err: any) {
+        console.error("Error generating leads:", err);
+        setError(err.message || "Failed to generate leads");
+    } finally {
+        setIsProcessingLeadAgent(false);
+    }
     };
 
     const handleSaveCredentials = async () => {
         setIsSavingCredentials(true);
         try {
             const response = await fetch(
-                "https://lead-agent-977121587860.asia-south1.run.app/save-credentials",
+                `${API_BASE_URL}/save-credentials`, 
                 {
                     method: "POST",
                     headers: {
@@ -392,7 +405,7 @@ export default function LeadDiscoveryPage() {
         setSendingEmails((prev) => new Set(prev).add(lead.email));
         try {
             const response = await fetch(
-                "https://lead-agent-977121587860.asia-south1.run.app/send-emails",
+                `${API_BASE_URL}/send-emails`, 
                 {
                     method: "POST",
                     headers: {
@@ -467,7 +480,7 @@ export default function LeadDiscoveryPage() {
         window.URL.revokeObjectURL(url);
     };
 
-    // Mock data for demonstration
+   
     const discoveredLeads: EnhancedLead[] = [
         {
             name: "Sarah Johnson",
@@ -554,12 +567,14 @@ export default function LeadDiscoveryPage() {
 
                         {/* Buttons + Mobile Menu Toggle */}
                         <div className="flex items-center gap-3">
-                            <Button
+                            <SignInButton mode="modal">
+                                <Button
                                 variant="ghost"
                                 className="hidden sm:inline-flex"
-                            >
+                                >
                                 Sign In
-                            </Button>
+                                </Button>
+                            </SignInButton>
                             <button
                                 className="md:hidden"
                                 onClick={() => setOpen(!open)}
@@ -643,12 +658,12 @@ export default function LeadDiscoveryPage() {
                         >
                             CSV Upload
                         </TabsTrigger>
-                        <TabsTrigger
+                        {/* <TabsTrigger
                             value="email-setup"
                             className="text-xs sm:text-sm md:text-lg"
                         >
                             Email Setup
-                        </TabsTrigger>
+                        </TabsTrigger> */}
                         <TabsTrigger
                             value="results"
                             className="text-xs sm:text-sm md:text-lg"
@@ -658,7 +673,7 @@ export default function LeadDiscoveryPage() {
                     </TabsList>
 
                     <TabsContent value="discovery" className="space-y-8">
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-10">
                             {/* AI Lead Agent */}
                             <Card className="border-border">
                                 <CardHeader>
@@ -679,19 +694,6 @@ export default function LeadDiscoveryPage() {
                                 </CardHeader>
                                 <CardContent className="space-y-6">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <Label htmlFor="topic">Topic</Label>
-                                            <Input
-                                                id="topic"
-                                                value={leadAgentParams.topic}
-                                                onChange={(e) =>
-                                                    setLeadAgentParams({
-                                                        ...leadAgentParams,
-                                                        topic: e.target.value,
-                                                    })
-                                                }
-                                                placeholder="e.g., Technology"
-                                            />
                                         </div>
                                         <div className="space-y-2">
                                             <Label htmlFor="niche">Niche</Label>
@@ -743,46 +745,65 @@ export default function LeadDiscoveryPage() {
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <Label htmlFor="no_of">
-                                                Number of Leads
-                                            </Label>
-                                            <Input
-                                                id="no_of"
-                                                type="number"
-                                                value={leadAgentParams.no_of}
-                                                onChange={(e) =>
-                                                    setLeadAgentParams({
-                                                        ...leadAgentParams,
-                                                        no_of: Number.parseInt(
-                                                            e.target.value
-                                                        ),
-                                                    })
-                                                }
-                                                placeholder="10"
-                                                min="1"
-                                                max="50"
-                                            />
+                                        <Label htmlFor="no_of">Number of Leads</Label>
+                                        <Input
+                                            id="no_of"
+                                            type="number"
+                                            value={leadAgentParams.no_of}
+                                            onChange={(e) =>
+                                                setLeadAgentParams({
+                                                    ...leadAgentParams,
+                                                    no_of: e.target.value, 
+                                                })
+                                            }
+                                            placeholder="10"
+                                            min="1"
+                                            max="50"
+                                        />
                                         </div>
                                         <div className="space-y-2">
-                                            <Label htmlFor="geospatial_area">
-                                                Geographic Area
-                                            </Label>
-                                            <Input
-                                                id="geospatial_area"
-                                                value={
-                                                    leadAgentParams.geospatial_area
-                                                }
-                                                onChange={(e) =>
-                                                    setLeadAgentParams({
-                                                        ...leadAgentParams,
-                                                        geospatial_area:
-                                                            e.target.value,
-                                                    })
-                                                }
-                                                placeholder="e.g., San Francisco Bay Area"
-                                            />
-                                        </div>
+                                        <Label htmlFor="location">Location</Label>
+                                        <Input
+                                            id="location"
+                                            value={leadAgentParams.location}
+                                            onChange={(e) =>
+                                                setLeadAgentParams({
+                                                    ...leadAgentParams,
+                                                    location: e.target.value,
+                                                })
+                                            }
+                                            placeholder="e.g., Mumbai"
+                                        />
                                     </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="size">Company Size</Label>
+                                    <Input
+                                        id="size"
+                                        value={leadAgentParams.size}
+                                        onChange={(e) =>
+                                            setLeadAgentParams({
+                                                ...leadAgentParams,
+                                                size: e.target.value,
+                                            })
+                                        }
+                                        placeholder="e.g., mid"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="date_range">Date Range</Label>
+                                    <Input
+                                        id="date_range"
+                                        value={leadAgentParams.date_range}
+                                        onChange={(e) =>
+                                            setLeadAgentParams({
+                                                ...leadAgentParams,
+                                                date_range: e.target.value,
+                                            })
+                                        }
+                                        placeholder="e.g., 30 days"
+                                    />
+                                </div>
+
 
                                     <Button
                                         onClick={handleLeadAgentSubmit}
@@ -912,7 +933,7 @@ export default function LeadDiscoveryPage() {
                         </div>
                     </TabsContent>
 
-                    <TabsContent value="csv-upload" className="space-y-8">
+                    <TabsContent value="csv-upload" className="space-y-8 mt-10">
                         <Card className="border-border">
                             <CardHeader>
                                 <div className="flex items-center gap-3">
@@ -1146,7 +1167,7 @@ export default function LeadDiscoveryPage() {
                         </Card>
                     </TabsContent>
 
-                    <TabsContent value="email-setup" className="space-y-8">
+                    {/* <TabsContent value="email-setup" className="space-y-8 mt-10">
                         <Card className="border-border">
                             <CardHeader>
                                 <div className="flex items-center gap-3">
@@ -1315,300 +1336,112 @@ export default function LeadDiscoveryPage() {
                                 </div>
                             </CardContent>
                         </Card>
-                    </TabsContent>
+                    </TabsContent> */}
 
                     <TabsContent value="results" className="space-y-8">
-                        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
-                            <Card className="border-border">
-                                <CardHeader className="pb-3">
-                                    <div className="flex items-center gap-2">
-                                        <Users className="h-4 w-4 text-primary" />
-                                        <CardTitle className="text-sm">
-                                            Total Leads
-                                        </CardTitle>
-                                    </div>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="text-2xl font-bold text-primary">
-                                        {allLeads.length}
-                                    </div>
-                                    <div className="text-xs text-muted-foreground">
-                                        All discovered
-                                    </div>
-                                </CardContent>
-                            </Card>
-                            <Card className="border-border">
-                                <CardHeader className="pb-3">
-                                    <div className="flex items-center gap-2">
-                                        <Target className="h-4 w-4 text-accent" />
-                                        <CardTitle className="text-sm">
-                                            Qualified
-                                        </CardTitle>
-                                    </div>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="text-2xl font-bold text-accent">
-                                        {qualifiedLeads.length}
-                                    </div>
-                                    <div className="text-xs text-muted-foreground">
-                                        Score ≥ 85
-                                    </div>
-                                </CardContent>
-                            </Card>
-                            <Card className="border-border">
-                                <CardHeader className="pb-3">
-                                    <div className="flex items-center gap-2">
-                                        <TrendingUp className="h-4 w-4 text-primary" />
-                                        <CardTitle className="text-sm">
-                                            Avg Score
-                                        </CardTitle>
-                                    </div>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="text-2xl font-bold text-primary">
-                                        {allLeads.length > 0
-                                            ? Math.round(
-                                                  allLeads.reduce(
-                                                      (sum, lead) =>
-                                                          sum + lead.score,
-                                                      0
-                                                  ) / allLeads.length
-                                              )
-                                            : 0}
-                                    </div>
-                                    <div className="text-xs text-muted-foreground">
-                                        Lead quality
-                                    </div>
-                                </CardContent>
-                            </Card>
-                            <Card className="border-border">
-                                <CardHeader className="pb-3">
-                                    <div className="flex items-center gap-2">
-                                        <Star className="h-4 w-4 text-accent" />
-                                        <CardTitle className="text-sm">
-                                            Top Score
-                                        </CardTitle>
-                                    </div>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="text-2xl font-bold text-accent">
-                                        {allLeads.length > 0
-                                            ? Math.max(
-                                                  ...allLeads.map(
-                                                      (lead) => lead.score
-                                                  )
-                                              )
-                                            : 0}
-                                    </div>
-                                    <div className="text-xs text-muted-foreground">
-                                        Best prospect
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
+                        <div className="my-8 space-y-4">
+                            <h2 className="text-2xl font-semibold mb-4">Discovered Leads</h2>
 
-                        <Card className="border-border">
-                            <CardHeader>
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <CardTitle className="text-xl font-serif">
-                                            All Discovered Leads
+                            {allLeads.length === 0 ? (
+                            <p className="text-gray-500">No leads found yet. Upload CSV or generate leads.</p>
+                            ) : (
+                            <>
+                                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                                {allLeads.map((lead) => (
+                                    <Card key={`${lead.email}-${lead.name}`} className="border border-gray-300 shadow-sm">
+                                    <CardHeader>
+                                        <CardTitle className="flex items-center justify-between">
+                                        <span>{lead.name}</span>
+                                        <Badge className={lead.score >= 85 ? "bg-green-100 text-green-700" : "bg-muted"}>
+                                            Score: {lead.score}
+                                        </Badge>
                                         </CardTitle>
-                                        <CardDescription>
-                                            Complete list of prospects with
-                                            scores and contact information
+                                        <CardDescription className="text-sm text-gray-600">
+                                        {lead.title} @ {lead.company}
                                         </CardDescription>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() =>
-                                                exportToCSV(allLeads)
-                                            }
-                                        >
-                                            <Download className="h-4 w-4 mr-2" />
-                                            Export All
-                                        </Button>
-                                    </div>
-                                </div>
-                            </CardHeader>
-                            <CardContent className="space-y-6">
-                                <div className="grid grid-cols-1 gap-6">
-                                    {allLeads.map((lead, index) => (
-                                        <Card
-                                            key={index}
-                                            className="border-border/50"
-                                        >
-                                            <CardHeader className="pb-4">
-                                                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                                                    {/* Left Section */}
-                                                    <div className="flex-1">
-                                                        {/* Title + Badges */}
-                                                        <div className="flex flex-wrap items-center gap-2 mb-2">
-                                                            <CardTitle className="text-base md:text-lg">
-                                                                {lead.name}
-                                                            </CardTitle>
-                                                            <Badge
-                                                                variant="secondary"
-                                                                className={
-                                                                    lead.score >=
-                                                                    85
-                                                                        ? "bg-accent/10 text-accent"
-                                                                        : "bg-muted"
-                                                                }
-                                                            >
-                                                                Score:{" "}
-                                                                {lead.score}
-                                                            </Badge>
-                                                            <Badge
-                                                                variant="outline"
-                                                                className="text-xs"
-                                                            >
-                                                                {lead.source}
-                                                            </Badge>
-                                                        </div>
+                                    </CardHeader>
 
-                                                        {/* Company / Title / Email */}
-                                                        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 text-sm text-muted-foreground mb-3">
-                                                            <div className="flex items-center gap-1">
-                                                                <Building className="h-4 w-4" />
-                                                                {lead.company}
-                                                            </div>
-                                                            <div className="flex items-center gap-1">
-                                                                <User className="h-4 w-4" />
-                                                                {lead.title}
-                                                            </div>
-                                                            <div className="flex items-center gap-1">
-                                                                <Mail className="h-4 w-4" />
-                                                                {lead.email}
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Profile Preview */}
-                                                        <p className="text-sm text-muted-foreground line-clamp-2">
-                                                            {lead.profile}
-                                                        </p>
-                                                    </div>
-
-                                                    {/* Right Section (Buttons) */}
-                                                    <div className="flex flex-wrap gap-2">
-                                                        <Button
-                                                            size="sm"
-                                                            onClick={() =>
-                                                                handleSendEmail(
-                                                                    lead
-                                                                )
-                                                            }
-                                                            disabled={sendingEmails.has(
-                                                                lead.email
-                                                            )}
-                                                            className="bg-primary hover:bg-primary/90"
-                                                        >
-                                                            {sendingEmails.has(
-                                                                lead.email
-                                                            ) ? (
-                                                                <>
-                                                                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                                                                    Sending...
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <Mail className="h-4 w-4 mr-1" />
-                                                                    Send Email
-                                                                </>
-                                                            )}
-                                                        </Button>
-                                                        {lead.linkedin && (
-                                                            <Button
-                                                                size="sm"
-                                                                variant="outline"
-                                                                asChild
-                                                            >
-                                                                <a
-                                                                    href={
-                                                                        lead.linkedin
-                                                                    }
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                >
-                                                                    <ExternalLink className="h-4 w-4" />
-                                                                </a>
-                                                            </Button>
-                                                        )}
-                                                        {lead.website && (
-                                                            <Button
-                                                                size="sm"
-                                                                variant="outline"
-                                                                asChild
-                                                            >
-                                                                <a
-                                                                    href={
-                                                                        lead.website
-                                                                    }
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                >
-                                                                    <ExternalLink className="h-4 w-4" />
-                                                                </a>
-                                                            </Button>
-                                                        )}
-                                                    </div>
+                                    <CardContent>
+                                        <p className="mb-2 text-gray-700">{lead.profile}</p>
+                                            {lead.email && (
+                                                <div className="mb-3">
+                                                <strong>Email:</strong>{" "}
+                                                <a href={`mailto:${lead.email}`} className="text-blue-600 underline">
+                                                    {lead.email}
+                                                </a>
                                                 </div>
-                                            </CardHeader>
+                                            )}
 
-                                            <CardContent>
-                                                <div className="bg-muted/50 rounded-lg">
-                                                    <h4 className="font-semibold mb-2">
-                                                        Personalized Email
-                                                    </h4>
-                                                    <div className="space-y-2">
-                                                        <div>
-                                                            <span className="text-sm font-medium">
-                                                                Subject:{" "}
-                                                            </span>
-                                                            <span className="text-sm">
-                                                                {
-                                                                    lead
-                                                                        .emailContent
-                                                                        .subject
-                                                                }
-                                                            </span>
-                                                        </div>
-                                                        <div>
-                                                            <span className="text-sm font-medium">
-                                                                Body:{" "}
-                                                            </span>
-                                                            <p className="text-sm text-muted-foreground">
-                                                                {
-                                                                    lead
-                                                                        .emailContent
-                                                                        .body
-                                                                }
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-                                    ))}
+                                            <div className="flex space-x-3 mb-4">
+                                                {lead.linkedin && (
+                                                <a
+                                                    href={lead.linkedin}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-blue-600 hover:underline"
+                                                    title="LinkedIn Profile"
+                                                >
+                                                    LinkedIn
+                                                </a>
+                                                )}
+
+                                                {lead.website && (
+                                                <a
+                                                    href={lead.website}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-blue-600 hover:underline"
+                                                    title="Company Website"
+                                                >
+                                                    Website
+                                                </a>
+                                                )}
+                                            </div>
+                                            {lead.emailContent.subject !== "No subject" && (
+                                    <div className="mb-4">
+                                        <strong>Email Subject:</strong>
+                                        <p className="italic text-gray-600">{lead.emailContent.subject}</p>
+                                    </div>
+                                    )}
+
+                                    {lead.emailContent.body !== "No email body" && (
+                                    <div className="mb-4">
+                                        <strong>Email Body:</strong>
+                                        <p className="whitespace-pre-wrap text-gray-600">{lead.emailContent.body}</p>
+                                    </div>
+                                    )}
+
+                                    {lead.email ? (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => handleSendEmail(lead)}
+                                        disabled={sendingEmails.has(lead.email)}
+                                    >
+                                        {sendingEmails.has(lead.email) ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Sending...
+                                        </>
+                                        ) : (
+                                        "Send Email"
+                                        )}
+                                    </Button>
+                                    ) : (
+                                    <p className="text-sm text-gray-400 italic">No email available to send</p>
+                                    )}
+                                    </CardContent>
+                                    </Card>
+                                ))}
                                 </div>
 
-                                {allLeads.length === 0 && (
-                                    <div className="text-center py-12">
-                                        <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                                        <h3 className="text-lg font-semibold text-foreground mb-2">
-                                            No leads discovered yet
-                                        </h3>
-                                        <p className="text-muted-foreground">
-                                            Use the Lead Discovery or CSV Upload
-                                            tabs to generate leads
-                                        </p>
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
-                    </TabsContent>
+                                <div className="mt-6">
+                                <Button onClick={() => exportToCSV(allLeads)}>Export Leads as CSV</Button>
+                                </div>
+                            </>
+                            )}
+                        </div>
+                        </TabsContent>
                 </Tabs>
             </div>
         </div>
